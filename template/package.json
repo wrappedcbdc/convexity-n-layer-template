@@ -1,0 +1,53 @@
+{
+  "name": "template",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "API service using an event driven architecture",
+  "engines": {
+    "node": ">=20.*"
+  },
+  "scripts": {
+    "test": "cross-env NODE_ENV=test PORT=9095 jest --runInBand --detectOpenHandles --forceExit",
+    "dev": "nodemon ./src/Bootstrap.ts",
+    "start": "node ./dist/src/Bootstrap.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@sentry/node": "^9.14.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "cron": "^4.3.3",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.4.7",
+    "envalid": "^8.0.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "express-winston": "^4.2.0",
+    "helmet": "^8.1.0",
+    "http-errors": "^2.0.0",
+    "ioredis": "^5.6.0",
+    "morgan": "^1.10.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/jest-sinon": "^1.0.5",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^24.1.0",
+    "@types/sinon": "^17.0.4",
+    "jest": "^29.7.0",
+    "jest-sinon": "^1.1.0",
+    "nodemon": "^3.1.9",
+    "sinon": "^20.0.0",
+    "ts-jest": "^29.3.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.1.6"
+  },
+  "private": true
+}
