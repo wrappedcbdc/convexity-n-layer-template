@@ -1,5 +1,5 @@
 {
-  "name": "__PROJECT_NAME__",
+  "name": "project-name",
   "version": "1.0.3",
   "license": "MIT",
   "description": "API service using an event driven architecture",
