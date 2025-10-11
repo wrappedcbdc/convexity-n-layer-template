@@ -6,12 +6,6 @@ const path = require('path');
 const MODULES_BASE_DIR = path.join('src', 'Modules');
 // ---------------------
 
-/**
- * Converts a string to PascalCase.
- * e.g., "my-wallet" -> "MyWallet"
- * @param {string} str
- * @returns {string}
- */
 const toPascalCase = (str) => {
     return str
         .match(/[A-Z]{2,}(?=[A-Z][a-z]+[0-9]*|\b)|[A-Z]?[a-z]+[0-9]*|[A-Z]|[0-9]+/g)
@@ -19,20 +13,48 @@ const toPascalCase = (str) => {
         .join('');
 };
 
-/**
- * Gets the module name from command line arguments.
- * Looks for a '--name' flag.
- * @returns {string} The module name in PascalCase.
- */
 const getModuleName = () => {
-    const argIndex = process.argv.indexOf('--name');
-    if (argIndex === -1 || !process.argv[argIndex + 1]) {
-        console.error('❌ Error: Please provide a module name with the --name flag.');
-        console.error('   > Example: npm run generate:module -- --name Wallet');
+    const argv = process.argv.slice(2);
+    let name;
+
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+
+        if (arg === '--name' || arg === '-n') {
+            name = argv[i + 1];
+            i++;
+            continue;
+        }
+
+        if (arg.startsWith('--name=')) {
+            name = arg.split('=').slice(1).join('=');
+            continue;
+        }
+
+        if (arg.startsWith('-n=')) {
+            name = arg.split('=').slice(1).join('=');
+            continue;
+        }
+
+        // Fallback: first non-flag is treated as the name
+        if (!arg.startsWith('-') && !name) {
+            name = arg;
+        }
+    }
+
+    if (!name) {
+        console.error('❌ Error: Please provide a module name.');
+        console.error('   > Examples:');
+        console.error('     npm run generate:module Wallet');
+        console.error('     npm run generate:module -- --name Wallet');
+        console.error('     node ./scripts/generateModules.js --name Wallet');
         process.exit(1);
     }
-    return toPascalCase(process.argv[argIndex + 1]);
+
+    return toPascalCase(name);
 };
+
+
 
 // --- TEMPLATES ---
 // These functions return the boilerplate content for each file.
