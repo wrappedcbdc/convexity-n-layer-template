@@ -1,6 +1,6 @@
 {
-  "name": "__PROJECT_NAME__",
-  "version": "1.0.1",
+  "name": "project-template",
+  "version": "1.0.2",
   "license": "MIT",
   "description": "API service using an event driven architecture",
   "engines": {
