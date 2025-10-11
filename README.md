@@ -75,6 +75,10 @@ Tests live next to code or under `tests/` following the same structure:
   ```bash
   npm test
   ```
+- Generate Module:
+    ```bash
+    npm run generate:module -- --name <ModuleName>
+    ```
 
 ## Environment variables
 

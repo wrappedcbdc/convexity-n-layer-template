@@ -17,6 +17,7 @@
     "dev": "nodemon ./src/Bootstrap.ts",
     "start": "node ./dist/src/Bootstrap.js",
     "build": "tsc",
+    "generate:module": "node ./scripts/generateModules.js",
     "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
