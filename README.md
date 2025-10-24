@@ -1,168 +1,299 @@
+# Convexity Express Service Framework
 
-Tests live next to code or under `tests/` following the same structure:
-- Unit: domain and application (fast, isolated).
-- Integration: infra adapters, HTTP endpoints.
-- E2E: black‑box flows.
+A lightweight TypeScript framework for building HTTP services with Express 5, modular lifecycle management, dependency injection, and Redis-backed caching. It emphasizes clean separation of concerns, environment-driven configuration, and graceful startup/shutdown.
 
-## Layer responsibilities
+## Overview
 
-- API
-    - Schemas/validation (zod)
-    - Controllers: translate HTTP to use case inputs
-    - Middlewares: helmet, cors, rate limiting, request logging, error handling
+- **Language**: TypeScript (Node.js)
+- **HTTP**: Express 5
+- **Config**: dotenv + runtime validation (via envalid/zod)
+- **DI**: Minimal, composable container for factories and singletons
+- **Caching/IPC**: Redis (ioredis)
+- **Eventing**: In-process async event bus (publish/subscribe)
+- **Security**: helmet, cors, rate limiting
+- **Logging**: winston (+ express-winston), morgan, optional daily rotate
+- **Monitoring**: optional Sentry
+- **Jobs**: cron
+- **Testing**: jest, ts-jest, sinon
 
-- Application
-    - Use cases (commands/queries)
-    - Transaction boundaries
-    - Ports (interfaces) for persistence/cache/external services
-    - Mapping to/from DTOs
+## Architectural Design
 
-- Domain
-    - Entities/value objects and invariants
-    - Domain services and events
-    - No framework or IO dependencies
+### Bootstrapper
+- Loads environment variables.
+- Obtains the application singleton and starts it.
+- Registers OS signal handlers (SIGINT/SIGTERM) for graceful shutdown.
 
-- Infrastructure
-    - Implement ports (repositories, caches, external clients)
-    - Logging (winston, express‑winston), metrics, Sentry
-    - Database client and migrations
-    - Caching (ioredis), rate limit stores
+### Core Application (App)
+- Encapsulates service lifecycle: initialize → start HTTP server → stop/cleanup.
+- Wires middlewares, routes, error handling, logging, and integrations.
+- Exposed as a singleton to guarantee a single running instance.
 
-- Config/Bootstrap
-    - Environment validation (envalid)
-    - Dependency wiring (compose concrete adapters for ports)
-    - Process signals and graceful shutdown
+### Dependency Injection Container
+- Factory and singleton registration.
+- Lazy resolution for services.
+- Enables modular features and testability without global state leakage.
 
-## Dependency rules
+### Configuration Layer
+- Centralized environment parsing and validation.
+- Provides typed access to settings like PORT and REDIS_URL.
 
-- API can depend on Application and Shared.
-- Application can depend on Domain and Shared.
-- Domain depends only on Shared (or nothing).
-- Infrastructure depends on Application/Domain ports and Shared, but application/domain must not import infra.
-- Wiring happens in `config/` and `server.ts` only.
+### Redis Cache
+- Singleton Redis client with retry strategy and connection state.
+- Safe initialization and teardown for graceful shutdown.
 
-## Request lifecycle
+### Event Bus
+- In-process, asynchronous publish/subscribe mechanism for domain events.
+- Decouples producers (publishers) from consumers (subscribers).
+- Handlers are wrapped with error isolation so one failing subscriber does not crash the process.
+- Suitable for intra-process workflows, UI-less side effects (emails, notifications), and cross-module coordination.
 
-1. Request hits Express route.
-2. Validator parses input (zod). On failure → 400.
-3. Controller constructs a use‑case input DTO and calls Application.
-4. Use case coordinates domain logic and calls port(s).
-5. Infra adapters fulfill port requests (DB, cache, HTTP).
-6. Result mapped to HTTP response.
-7. Errors are converted to HTTP using centralized error middleware (http-errors).
-8. Access logs and error logs are emitted (winston/express‑winston/Sentry).
+### Cross-cutting Concerns
+- **Security**: helmet, cors, rate limits.
+- **Observability**: winston logs, morgan HTTP logs, optional Sentry.
+- **Validation**: zod for request/DTO validation.
+- **Errors**: consistent http-errors mapping and centralized error middleware.
+- **Jobs**: cron-based scheduled tasks sharing the DI and config.
 
-## Getting started
+## Process Flow
 
-- Requirements: Node.js >= 18, npm
-- Install dependencies:
-  ```bash
-  npm install
-  ```
-- Development:
-  ```bash
-  npm run dev
-  ```
-- Build:
-  ```bash
-  npm run build
-  ```
-- Run:
-  ```bash
-  npm start
-  ```
-- Test:
-  ```bash
-  npm test
-  ```
-- Generate Module:
-    ```bash
-    npm run generate:module <ModuleName>
-    ```
+### 1. Startup
+- Read `.env` and validate config.
+- Create/get App singleton.
+- Initialize DI container and register services.
+- Build Express app:
+    - Security (helmet, cors), request logging (morgan), body parsing, cookies.
+    - Rate limiting and any custom middlewares.
+    - Routes/controllers with schema validation.
+    - Error-handling middleware.
+- Start listening on configured PORT.
+- Redis is lazily connected on first use, then reused.
 
-## Environment variables
+### 2. Runtime
+- Requests flow through middleware → controllers/services → responses.
+- Services are resolved via DI container (singletons/factories).
+- Domain events are published to the event bus and delivered asynchronously to subscribed handlers.
+- Logs emitted through winston; HTTP logs via morgan.
+- Scheduled jobs run via cron and can use the same services/Redis.
 
-Define in `.env` and validate in `config/` using envalid.
+### 3. Shutdown (SIGINT/SIGTERM)
+- Stop accepting new connections and drain in-flight requests.
+- Close external resources (e.g., Redis).
+- Flush logs and exit cleanly.
 
-- NODE_ENV=development|test|production
-- PORT=3000
-- LOG_LEVEL=info|debug|warn|error
-- DATABASE_URL=<YOUR_DATABASE_URL>
-- REDIS_URL=redis://<HOST>:<PORT>/<DB>
-- CORS_ORIGIN=<YOUR_FRONTEND_ORIGIN>
-- RATE_LIMIT_WINDOW_MS=60000
-- RATE_LIMIT_MAX=100
-- SENTRY_DSN=<YOUR_SENTRY_DSN>
+## Key Features
 
-Provide an `.env.example` with placeholders.
+### Simple DI Container
+- `register(token, factory)` for transient services.
+- `registerSingleton(token, factory)` for single-instance services.
+- `resolve(token)` for retrieval with lazy instantiation.
 
-## Logging and observability
+### Clean App Lifecycle
+- Graceful shutdown hooks.
 
-- Request logging via morgan or express‑winston.
-- Structured logs via winston with daily rotate (if configured).
-- Errors reported to Sentry in production.
-- Correlate logs with request IDs (middleware) when available.
+### Redis Client Singleton
+- Retry strategy.
+- Connection status checks.
+- Explicit close method for teardown.
 
-## Validation and errors
+### Event Bus
+- In-process async pub/sub API (publish, subscribe).
+- Error isolation per handler, with room for retries/dead-letter patterns.
+- Subscription tracking for observability.
 
-- Input validation with zod validators in API layer.
-- Throw domain/application errors for business rules.
-- Translate to HTTP using a centralized error handler (http-errors).
-- Never leak internal error details in production responses.
+### Express 5 Stack
+- Security, CORS, logging, and centralized error handling.
 
-## Security
+### Additional Features
+- Validated configuration and typed access to env variables.
+- Pluggable jobs and third-party integrations (Sentry, etc.).
+- Testing-ready structure with Jest + Sinon.
 
-- helmet and cors in API layer.
-- Rate limiting (express-rate-limit) with Redis store in production.
-- Sanitize and validate all inputs.
-- Keep secrets in environment variables only.
+## Configuration
 
-## Caching
+Create a `.env` file in the project root:
 
-- ioredis client initialized in infra/redis.
-- Application layer depends on a CachePort; infra provides RedisCacheAdapter.
-- Use short TTLs for request‑scoped caching where appropriate.
+```env
+NODE_ENV=development
+PORT=3000
+REDIS_URL=redis://:<REDIS_PASSWORD>@<REDIS_HOST>:<REDIS_PORT>/<DB_INDEX>
+LOG_LEVEL=info
+SENTRY_DSN=<YOUR_SENTRY_DSN_OR_EMPTY>
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=100
+```
 
-## Background jobs
+Use the provided config layer to access parsed/validated env values.
 
-- Use cron for scheduled tasks in `jobs/`.
-- Jobs resolve application use cases; avoid calling infra directly.
-- Ensure graceful shutdown and health of job workers.
+## Getting Started
 
-## Adding a new feature (checklist)
+### Install Dependencies
+```bash
+npm install
+```
 
-1. Domain
-    - Add entity/value object and any domain errors.
-2. Application
-    - Define a port if external persistence/integration is needed.
-    - Implement a use case (command/query) that uses the port(s).
-3. Infrastructure
-    - Implement the port(s) (e.g., RepositoryAdapter).
-    - Add migrations or schema changes if needed.
-4. API
-    - Add validator schema.
-    - Add controller and route; map to the use case.
-5. Wire it
-    - Register adapter implementations and bind them in the composition root.
-6. Tests
-    - Unit test domain and use cases.
-    - Integration test adapters and HTTP route.
+### Run in Development
+```bash
+npm run dev
+```
 
-## Scripts
+### Build
+```bash
+npm run build
+```
 
-Common scripts you can expect:
-- dev: run the app in watch mode
-- build: compile TypeScript to dist
-- start: run compiled app
-- test: run unit/integration tests
-- lint: static analysis
+### Start Production Build
+```bash
+npm start
+```
 
-## Contributing
+### Test
+```bash
+npm test
+```
 
-- Follow the layer boundaries and dependency rules.
-- Prefer small, focused PRs with tests.
-- Use conventional commit messages where possible.
+### Generate a New Module
+```bash
+npm run generate:module <module-name>
+```
+This creates a new module scaffold under `src/Modules/<module-name>`.
 
----
+## Event Bus
 
-If you need help locating where a piece of logic should live, start from the API boundary and walk inward following the dependency rules above.
+The event bus provides a lightweight, in-memory publish/subscribe mechanism to decouple modules. Publishers emit typed events with payloads; subscribers register async handlers for specific event types.
+
+### When to Use
+- Trigger side effects after core actions (e.g., send email after user signup).
+- Decouple modules to reduce direct dependencies.
+- Coordinate workflows within the same Node.js process.
+
+### Semantics
+- In-process only (not distributed by default).
+- At-most-once delivery per running process.
+- Handlers are invoked asynchronously; failures are isolated and logged.
+- Subscriptions persist for the process lifetime.
+
+### Usage
+
+#### 1. Define Event Types and Payload Map
+
+```typescript
+// events.ts
+export enum EventType {
+  USER_REGISTERED = 'USER_REGISTERED',
+  ORDER_PAID = 'ORDER_PAID',
+}
+
+export interface EventPayloads {
+  [EventType.USER_REGISTERED]: { userId: string; email: string };
+  [EventType.ORDER_PAID]: { orderId: string; amount: number };
+}
+```
+
+#### 2. Subscribe to an Event
+
+```typescript
+// user-notifications.module.ts
+import { EventType } from './events';
+
+type UserRegistered = { userId: string; email: string };
+
+async function onUserRegistered(payload: UserRegistered): Promise<void> {
+  // e.g., send a welcome email
+  // await emailService.sendWelcome(payload.email);
+  console.log('Welcome email queued for', payload.email);
+}
+
+export async function initUserNotifications() {
+  await eventBus.subscribe(
+    EventType.USER_REGISTERED,
+    onUserRegistered,
+    'UserNotifications'
+  );
+}
+```
+
+#### 3. Publish an Event
+
+```typescript
+// user.service.ts
+import { EventType } from './events';
+
+export async function registerUser(input: { email: string; password: string }) {
+  // 1) core logic: create user
+  const userId = '...'; // result of creation
+
+  // 2) publish domain event
+  await eventBus.publish(EventType.USER_REGISTERED, {
+    userId,
+    email: input.email,
+  });
+
+  return { userId };
+}
+```
+
+### Error Handling and Reliability
+
+- Handler failures are caught and logged; one failing subscriber will not affect others.
+- For critical workflows, consider:
+    - Idempotent handlers (safe to re-run).
+    - Adding retry/backoff around failing handlers.
+    - Forwarding irrecoverable payloads to a dead-letter queue (e.g., Redis list, external broker).
+- If you need cross-process or guaranteed delivery semantics, integrate a persistent broker (e.g., Redis streams, RabbitMQ, Kafka) behind the same EventBus interface.
+
+### Testing
+
+- In unit tests, replace the EventBus with a test double injected via DI.
+- Assert that `publish()` was called with the correct type/payload, or invoke handlers directly for behavior tests.
+
+## Usage Examples
+
+### Resolving Services from the DI Container
+
+```typescript
+import { Container } from '<your-path>/Core/Container/container';
+
+const container = new Container();
+
+// Register a transient service
+container.register('EmailService', () => new EmailService(/* deps */));
+
+// Register a singleton
+container.registerSingleton('Config', () => new ConfigService(/* env */));
+
+// Resolve where needed
+const emailService = container.resolve<EmailService>('EmailService');
+```
+
+### Using the Redis Cache Singleton
+
+```typescript
+import RedisCache from '<your-path>/Infra/Redis';
+
+async function cacheExample() {
+  const redis = RedisCache.getInstance();
+  await redis.set('foo', 'bar');
+  const val = await redis.get('foo'); // "bar"
+}
+```
+
+### Graceful Shutdown
+
+```typescript
+// On application stop, ensure external resources are closed
+await RedisCache.closeConnection();
+// Close HTTP server and other resources here
+```
+
+## Testing
+
+- Unit tests with Jest + ts-jest (TypeScript).
+- Use Sinon for spies/stubs/mocks.
+- Prefer DI to mock dependencies instead of touching global state.
+
+## Operational Notes
+
+- The in-process event bus is not a message queue; for multi-instance deployments, pair it with a persistent broker for cross-process delivery.
+- Health/readiness endpoints are commonly added to support orchestration; consider exposing endpoints for liveness/readiness if you deploy in containers.
+- Ensure Redis and other external dependencies are optional where appropriate to enable local development without external services.
+- Always verify graceful shutdown in your target environment (containers, Kubernetes, systemd).
